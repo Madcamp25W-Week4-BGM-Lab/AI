@@ -20,7 +20,7 @@ def build_prompt(tokenizer, messages: List[Dict[str, str]]):
 
 def main():
     parser = argparse.ArgumentParser(description="Local chat with Qwen2.5-7B-Instruct")
-    parser.add_argument("--model-path", default="/home/qwen_7b_instruct", help="Path to local model")
+    parser.add_argument("--model-path", default="/home/AI/qwen_7b_instruct", help="Path to local model")
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--temperature", type=float, default=0.7)
     parser.add_argument("--top-p", type=float, default=0.9)
