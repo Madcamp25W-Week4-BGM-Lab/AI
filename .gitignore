@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+.dist/
+.build/
+
+# Virtualenv / Conda
+.venv/
+venv/
+.env/
+.envrc
+.conda/
+
+# Hugging Face / model artifacts
+.cache/
+/qwen_7b_instruct/
+*.safetensors
+*.bin
+*.pt
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
