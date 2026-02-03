@@ -6,7 +6,7 @@ import json
 from typing import List, Dict
 
 # --- CONFIGURATION ---
-DEFAULT_BACKEND_URL = "http://127.0.0.1:8000"  # <--- REPLACE WITH YOUR BACKEND IP
+DEFAULT_BACKEND_URL = "http://172.10.5.176"  # <--- REPLACE WITH YOUR BACKEND IP
 POLL_INTERVAL = 1.0  # Seconds to wait when queue is empty
 
 # build_prompt: helper to generate prompts given the message (system_instructions, user_message)
@@ -23,7 +23,7 @@ def build_prompt(tokenizer, messages: List[Dict[str, str]]):
 
 def main():
     parser = argparse.ArgumentParser(description="GPU Worker for SubText")
-    parser.add_argument("--model-path", default="/home/AI/qwen_7b_instruct")
+    parser.add_argument("--model-path", default="/home/qwen_7b_instruct")
     parser.add_argument("--backend", default=DEFAULT_BACKEND_URL)
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--device", default="auto")
