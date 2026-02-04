@@ -26,6 +26,10 @@ def load_model(model_path: str, device: str = "auto"):
     dtype = torch.float16 if device == "cuda" else torch.float32
 
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+
+    if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
+    
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
         torch_dtype=dtype,

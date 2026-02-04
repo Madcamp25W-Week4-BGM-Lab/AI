@@ -68,10 +68,11 @@ def main():
             # Use the raw prompt as-is (no formatting or prompt edits).
             stage = "generate"
             print(f"🧠 Generate start {task_id}")
-            result_text = generate_from_prompt(
+            result_text = generate_from_task(
                 tokenizer,
                 model,
-                user_msg,
+                system_text=system_instr,
+                user_text=user_msg,
                 max_new_tokens=args.max_new_tokens,
                 temperature=0.7,
             )
