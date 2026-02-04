@@ -28,3 +28,7 @@ venv/
 Thumbs.db
 .vscode/
 .idea/
+
+# Runtime logs / PID files
+gpu_worker.log
+gpu_worker.pid
