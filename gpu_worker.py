@@ -3,23 +3,11 @@ import time
 import sys
 import requests
 import json
-from typing import List, Dict
+from chat_qwen import load_model, generate_from_prompt, generate_from_task
 
 # --- CONFIGURATION ---
 DEFAULT_BACKEND_URL = "http://172.10.5.176"  # <--- REPLACE WITH YOUR BACKEND IP
 POLL_INTERVAL = 1.0  # Seconds to wait when queue is empty
-
-# build_prompt: helper to generate prompts given the message (system_instructions, user_message)
-def build_prompt(tokenizer, messages: List[Dict[str, str]]):
-    if hasattr(tokenizer, "apply_chat_template"):
-        return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    
-    # Fallback for manual formatting
-    parts = []
-    for m in messages:
-        parts.append(f"[{m.get('role', 'user')}] {m.get('content', '')}")
-    parts.append("[assistant]")
-    return "\n".join(parts)
 
 def main():
     parser = argparse.ArgumentParser(description="GPU Worker for SubText")
@@ -33,39 +21,19 @@ def main():
     # --- LOAD MODEL ---
     print(f"⏳ Loading Model from {args.model_path}...")
     try:
-        import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
-    except ImportError:
-        print("Error: Missing libraries.", file=sys.stderr)
-        sys.exit(1)
-    
-    if args.device == "auto":
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-    else:
-        device = args.device
-
-    print(f"⚙️  Running on: {device.upper()}")
-    dtype = torch.float16 if device == "cuda" else torch.float32
-
-    try:
-        tokenizer = AutoTokenizer.from_pretrained(args.model_path, trust_remote_code=True)
-        model = AutoModelForCausalLM.from_pretrained(
-            args.model_path,
-            torch_dtype=dtype,
-            device_map="auto" if device == "cuda" else None,
-            trust_remote_code=True,
-        )
-        if device == "cpu":
-            model = model.to(device)
+        tokenizer, model, device = load_model(args.model_path, device=args.device)
     except Exception as e:
         print(f"❌ Failed to load model: {e}")
         sys.exit(1)
 
+    print(f"⚙️  Running on: {device.upper()}")
     print(f"✅ Worker Online! Polling {args.backend}...")
 
     # --- WORKER LOOP --- 
     while True: 
-        task_id = "UNKNOWN"
+        task_id = None
+        stage = "poll"
+        completed = False
         try: 
             # Poll for work 
             try:
@@ -87,57 +55,47 @@ def main():
             # Parse LLMTask Schema
             task = response.json()
             print(f"📦 RAW DATA FROM SERVER: {task}")
-            task_id = task.get('id')
-
+            task_id = task.get("id")
             if not task_id:
-                print(f"❌ ERROR: Could not find 'id' in task keys: {task.keys()}")
-                # Try 'task_id' just in case your schema is different
-                task_id = task.get('task_id', "UNKNOWN")
+                raise ValueError(f"Missing task.id in payload keys={list(task.keys())}")
 
-            print(f"🚀 Processing Task {task_id}")
+            domain = task.get("domain", "unknown")
+            print(f"🚀 Processing Task {task_id} (domain={domain})")
 
             system_instr = task.get('system_instruction', "You are a helpful assistant.")
             user_msg = task.get('user_message', "")
 
-            print(f"🚀 Processing Task {task_id} ({task.get('domain', 'unknown')})")
-
-            # Construct Messages Directly (system_instructions, user_message)
-            # No reformatting done here, taken directly from backend logic
-            messages = []
-            if system_instr:
-                messages.append({"role": "system", "content": system_instr})
-            
-            messages.append({"role": "user", "content": user_msg})
-
-            prompt = build_prompt(tokenizer, messages)
-            inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-
-            # Run 
-            with torch.no_grad():
-                output_ids = model.generate(
-                    **inputs,
-                    max_new_tokens=args.max_new_tokens,
-                    do_sample=True,
-                    temperature=0.7,
-                )
-            
-            # Decode Output
-            new_tokens = output_ids[0][inputs["input_ids"].shape[1]:]
-            result_text = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+            # Use the raw prompt as-is (no formatting or prompt edits).
+            stage = "generate"
+            print(f"🧠 Generate start {task_id}")
+            result_text = generate_from_task(
+                tokenizer,
+                model,
+                system_text=system_instr,
+                user_text=user_msg,
+                max_new_tokens=args.max_new_tokens,
+                temperature=0.7,
+            )
+            print(f"🧠 Generate done {task_id}")
 
             # Submit Result
-            requests.post(f"{args.backend}/queue/complete/{task_id}", json={
-                "task_id": task_id,
-                "result": result_text,
-                "status": "completed"
-            })
+            stage = "complete"
+            requests.post(f"{args.backend}/queue/complete/{task_id}", json={"result": result_text})
+            completed = True
             print(f"✅ Finished {task_id}")
 
         except requests.exceptions.ConnectionError:
             print(f"❌ Cannot connect to Backend. Retrying in 5s...")
             time.sleep(5)
         except Exception as e:
-            print(f"❌ Worker Error: {e}")
+            err_text = f"[ERROR][{stage}] {e}"
+            print(f"❌ Worker Error: {err_text}")
+            try:
+                if task_id and not completed:
+                    requests.post(f"{args.backend}/queue/complete/{task_id}", json={"result": err_text})
+                    completed = True
+            except Exception:
+                pass
             time.sleep(1)
 
 if __name__ == "__main__":
